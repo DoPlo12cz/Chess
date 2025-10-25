@@ -1,0 +1,245 @@
+<!DOCTYPE html>
+<html lang="cs">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Online Šachy (P2P)</title>
+  <script src="https://cdn.jsdelivr.net/npm/chess.js@1.0.0/dist/chess.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/simple-peer@9.11.1/simplepeer.min.js"></script>
+  <style>
+    body {
+      font-family: Arial, sans-serif;
+      background: #f5f5f5;
+      margin: 0;
+      padding: 20px;
+      color: #222;
+    }
+    h1 {
+      text-align: center;
+    }
+    .board {
+      display: grid;
+      grid-template-columns: repeat(8, 60px);
+      grid-template-rows: repeat(8, 60px);
+      border: 4px solid #222;
+      width: fit-content;
+      margin: 0 auto;
+    }
+    .cell {
+      width: 60px;
+      height: 60px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 32px;
+      cursor: pointer;
+      user-select: none;
+    }
+    .dark { background: #769656; }
+    .light { background: #eeeed2; }
+    .selected { outline: 3px solid yellow; }
+
+    .controls, .network, .chat {
+      max-width: 500px;
+      margin: 20px auto;
+      background: white;
+      border-radius: 8px;
+      box-shadow: 0 2px 6px rgba(0,0,0,0.1);
+      padding: 15px;
+    }
+    textarea {
+      width: 100%;
+      height: 100px;
+      margin-top: 8px;
+    }
+    button {
+      margin: 4px 0;
+      padding: 6px 10px;
+      font-size: 15px;
+      cursor: pointer;
+    }
+    .chat-messages {
+      height: 150px;
+      overflow-y: auto;
+      border: 1px solid #ccc;
+      padding: 5px;
+      margin-bottom: 8px;
+      font-size: 14px;
+      background: #fafafa;
+    }
+  </style>
+</head>
+<body>
+  <h1>♟ Online Šachy (P2P verze) ♟</h1>
+  <div id="board" class="board"></div>
+
+  <div class="controls">
+    <button id="flipBtn">Otočit šachovnici</button>
+    <button id="restartBtn">Restart</button>
+  </div>
+
+  <div class="network">
+    <h3>Online připojení</h3>
+    <button id="hostBtn">Vytvořit hru (host)</button>
+    <button id="joinBtn">Připojit se (guest)</button>
+    <textarea id="localSignal" placeholder="Tvůj signal (pošli soupeři)" readonly></textarea>
+    <textarea id="remoteSignal" placeholder="Sem vlož soupeřův signal"></textarea>
+    <button id="applySignal">Připojit</button>
+    <p>Status: <span id="status">Nepřipojeno</span></p>
+  </div>
+
+  <div class="chat">
+    <h3>Chat</h3>
+    <div class="chat-messages" id="chatBox"></div>
+    <input id="chatInput" type="text" placeholder="Napiš zprávu..." style="width:80%">
+    <button id="sendMsg">Odeslat</button>
+  </div>
+
+  <script>
+    const boardDiv = document.getElementById('board');
+    const chess = new Chess();
+    let orientation = 'white';
+    let selected = null;
+    let peer = null;
+    let connected = false;
+
+    const statusEl = document.getElementById('status');
+    const localSignal = document.getElementById('localSignal');
+    const remoteSignal = document.getElementById('remoteSignal');
+
+    function renderBoard() {
+      boardDiv.innerHTML = '';
+      const board = chess.board();
+      const display = orientation === 'white' ? board : board.slice().reverse().map(r => r.slice().reverse());
+      display.forEach((row, rIdx) => {
+        row.forEach((cell, cIdx) => {
+          const div = document.createElement('div');
+          div.classList.add('cell');
+          div.classList.add((rIdx + cIdx) % 2 ? 'dark' : 'light');
+          if (cell) div.textContent = pieceToUnicode(cell);
+          div.onclick = () => onCellClick(rIdx, cIdx, board);
+          boardDiv.appendChild(div);
+        });
+      });
+    }
+
+    function pieceToUnicode(p) {
+      const map = {
+        'p': { w: '♙', b: '♟' },
+        'r': { w: '♖', b: '♜' },
+        'n': { w: '♘', b: '♞' },
+        'b': { w: '♗', b: '♝' },
+        'q': { w: '♕', b: '♛' },
+        'k': { w: '♔', b: '♚' }
+      };
+      return map[p.type][p.color];
+    }
+
+    function coordToAlgebraic(r, c) {
+      const files = 'abcdefgh';
+      const ranks = '87654321';
+      if (orientation === 'white') return files[c] + ranks[r];
+      return files[7 - c] + ranks[7 - r];
+    }
+
+    function onCellClick(r, c, currentBoard) {
+      const sq = coordToAlgebraic(r, c);
+      const piece = chess.get(sq);
+      if (selected) {
+        const move = { from: selected, to: sq, promotion: 'q' };
+        const result = chess.move(move);
+        if (result) {
+          renderBoard();
+          broadcast({ type: 'move', fen: chess.fen() });
+          selected = null;
+          return;
+        }
+        selected = null;
+      } else if (piece && piece.color === chess.turn()) {
+        selected = sq;
+      }
+    }
+
+    function flipBoard() {
+      orientation = orientation === 'white' ? 'black' : 'white';
+      renderBoard();
+    }
+
+    function restartGame() {
+      chess.reset();
+      renderBoard();
+      broadcast({ type: 'move', fen: chess.fen() });
+    }
+
+    // --- Networking (P2P) ---
+    function createPeer(initiator) {
+      peer = new SimplePeer({ initiator, trickle: false });
+      peer.on('signal', data => {
+        localSignal.value = JSON.stringify(data);
+      });
+      peer.on('connect', () => {
+        connected = true;
+        statusEl.textContent = 'Připojeno';
+        if (initiator) peer.send(JSON.stringify({ type: 'move', fen: chess.fen() }));
+      });
+      peer.on('data', d => {
+        const msg = JSON.parse(d.toString());
+        handleRemote(msg);
+      });
+      peer.on('close', () => { connected = false; statusEl.textContent = 'Odpojeno'; });
+      peer.on('error', e => console.error(e));
+    }
+
+    function applySignal() {
+      try {
+        const data = JSON.parse(remoteSignal.value);
+        peer.signal(data);
+      } catch {
+        alert('Neplatný signal JSON');
+      }
+    }
+
+    function handleRemote(obj) {
+      if (obj.type === 'move' && obj.fen) {
+        chess.load(obj.fen);
+        renderBoard();
+      }
+      if (obj.type === 'chat') {
+        addChat('soupeř', obj.text);
+      }
+    }
+
+    function broadcast(obj) {
+      if (peer && connected) peer.send(JSON.stringify(obj));
+    }
+
+    // --- Chat ---
+    const chatBox = document.getElementById('chatBox');
+    const chatInput = document.getElementById('chatInput');
+
+    function addChat(from, text) {
+      const div = document.createElement('div');
+      div.textContent = `${from}: ${text}`;
+      chatBox.appendChild(div);
+      chatBox.scrollTop = chatBox.scrollHeight;
+    }
+
+    document.getElementById('sendMsg').onclick = () => {
+      const text = chatInput.value.trim();
+      if (!text) return;
+      addChat('já', text);
+      broadcast({ type: 'chat', text });
+      chatInput.value = '';
+    };
+
+    // --- Buttons ---
+    document.getElementById('hostBtn').onclick = () => createPeer(true);
+    document.getElementById('joinBtn').onclick = () => createPeer(false);
+    document.getElementById('applySignal').onclick = applySignal;
+    document.getElementById('flipBtn').onclick = flipBoard;
+    document.getElementById('restartBtn').onclick = restartGame;
+
+    renderBoard();
+  </script>
+</body>
+</html>
