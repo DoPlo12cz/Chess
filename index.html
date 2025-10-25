@@ -1,423 +1,155 @@
 <!DOCTYPE html>
 <html lang="cs">
 <head>
-  <meta charset="utf-8" />
-  <meta name="viewport" content="width=device-width,initial-scale=1" />
-  <title>Profi Online Šachy — Lobby & P2P (GitHub Pages ready)</title>
-
-  <!-- Dependencies (CDN) -->
-  <script src="https://cdn.jsdelivr.net/npm/chess.js@1.0.0/dist/chess.min.js"></script>
-  <script src="https://cdn.jsdelivr.net/npm/simple-peer@9.11.1/simplepeer.min.js"></script>
-
-  <!-- Styling: modern, responsive, dark-mode aware -->
-  <style>
-    :root{
-      --bg:#0f1720; --panel:#0b1220; --muted:#94a3b8; --accent:#7c3aed; --card:#0b1220;
-      --light-bg:#f7f8fb; --light-panel:#ffffff; --text:#e6eef8; --glass:rgba(255,255,255,0.04);
-      --success:#16a34a; --danger:#ef4444;
-    }
-    @media (prefers-color-scheme: light){
-      :root{
-        --bg:var(--light-bg); --panel:var(--light-panel); --muted:#4b5563; --text:#0b1220; --glass:rgba(0,0,0,0.04);
-      }
-    }
-
-    *{box-sizing:border-box;font-family:Inter, ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial}
-    html,body{height:100%;margin:0;background:linear-gradient(180deg,var(--bg),#081021);color:var(--text)}
-    .wrap{max-width:1100px;margin:18px auto;padding:18px;display:grid;gap:18px;grid-template-columns:1fr;align-items:start}
-    header{display:flex;align-items:center;gap:12px;justify-content:space-between}
-    .brand{display:flex;gap:12px;align-items:center}
-    .logo{width:48px;height:48px;border-radius:10px;background:linear-gradient(135deg,var(--accent),#06b6d4);display:flex;align-items:center;justify-content:center;font-weight:700;color:white;box-shadow:0 6px 20px rgba(2,6,23,.6)}
-    h1{font-size:1.15rem;margin:0}
-    .subtitle{color:var(--muted);font-size:0.92rem}
-
-    /* main layout: lobby left, preview / info right on wide screens */
-    .main{display:grid;grid-template-columns:1fr 380px;gap:18px}
-    @media (max-width:980px){ .main{grid-template-columns:1fr} }
-
-    /* panels */
-    .panel{background:var(--panel);border-radius:12px;padding:14px;box-shadow:0 6px 20px rgba(2,6,23,.6);border:1px solid rgba(255,255,255,0.03)}
-    .panel h2{margin:0 0 8px 0;font-size:1rem}
-    .muted{color:var(--muted);font-size:0.9rem}
-
-    /* Lobby buttons */
-    .lobby-grid{display:flex;gap:12px;flex-wrap:wrap}
-    .lobby-btn{flex:1;background:linear-gradient(180deg, rgba(255,255,255,0.03), transparent);padding:12px;border-radius:10px;display:flex;flex-direction:column;gap:8px;cursor:pointer;border:1px solid rgba(255,255,255,0.03)}
-    .lobby-btn strong{font-size:1.05rem}
-    .lobby-btn small{color:var(--muted)}
-
-    /* Game / board area */
-    .game-area{display:flex;flex-direction:column;gap:12px;align-items:center}
-    .board{width:min(92vw,560px);max-width:560px;aspect-ratio:1/1;display:grid;grid-template-columns:repeat(8,1fr);border-radius:10px;overflow:hidden;border:6px solid rgba(0,0,0,0.2)}
-    .cell{display:flex;align-items:center;justify-content:center;user-select:none;font-size:clamp(16px,4.5vw,36px);touch-action:manipulation}
-    .light{background:#f0d9b5;color:#111}
-    .dark{background:#b58863;color:#111}
-    .cell.selected{outline:4px solid rgba(124,58,237,0.85)}
-    .status-row{display:flex;gap:8px;align-items:center;justify-content:space-between;width:100%}
-    .info-pill{background:var(--glass);padding:8px 12px;border-radius:999px;color:var(--muted);font-weight:600}
-
-    /* controls */
-    .controls-row{display:flex;gap:8px;flex-wrap:wrap}
-    .btn{padding:10px 12px;border-radius:10px;border:none;background:linear-gradient(180deg,var(--accent),#4f46e5);color:white;font-weight:600;cursor:pointer}
-    .btn.ghost{background:transparent;border:1px solid rgba(255,255,255,0.06);color:var(--text)}
-    .btn.warn{background:linear-gradient(180deg,var(--danger),#dc2626)}
-
-    /* networking area - looks professional */
-    .net-grid{display:grid;grid-template-columns:1fr 1fr;gap:10px}
-    @media (max-width:460px){ .net-grid{grid-template-columns:1fr} }
-
-    textarea,input{width:100%;padding:10px;border-radius:8px;border:1px solid rgba(255,255,255,0.04);background:transparent;color:var(--text);resize:vertical}
-    .small{font-size:0.9rem;color:var(--muted)}
-    .center{display:flex;align-items:center;justify-content:center}
-
-    /* chat */
-    .chat-box{height:220px;overflow:auto;padding:8px;border-radius:8px;background:linear-gradient(180deg, rgba(255,255,255,0.02), rgba(0,0,0,0.02));border:1px solid rgba(255,255,255,0.02)}
-    .chat-msg{margin-bottom:8px;padding:8px;border-radius:8px;max-width:80%}
-    .chat-me{background:linear-gradient(180deg,#0b1220,rgba(124,58,237,0.18));color:var(--text);margin-left:auto}
-    .chat-peer{background:rgba(255,255,255,0.03);color:var(--text);margin-right:auto}
-    .muted-block{color:var(--muted);font-size:0.9rem;padding:8px;background:transparent;border-radius:8px}
-
-    footer{display:flex;justify-content:space-between;align-items:center;color:var(--muted);font-size:0.9rem;padding:6px 12px}
-    .kbd{background:#071226;padding:6px 8px;border-radius:6px;color:#9fb0d6;font-weight:700;letter-spacing:0.6px}
-    a.link{color:var(--accent);text-decoration:none;font-weight:600}
-  </style>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Online Šachy — 2 Zařízení</title>
+<script src="https://cdn.jsdelivr.net/npm/chess.js@1.0.0/dist/chess.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/simple-peer@9.11.1/simplepeer.min.js"></script>
+<style>
+body{margin:0;font-family:system-ui;background:#0f1720;color:#e6eef8;display:flex;flex-direction:column;align-items:center;padding:12px}
+h1{margin:12px 0;font-size:1.5rem;text-align:center}
+.panel{background:#0b1220;padding:12px;border-radius:12px;margin-bottom:12px;width:min(95vw,500px)}
+button{padding:8px 12px;border:none;border-radius:8px;background:#7c3aed;color:white;font-weight:600;cursor:pointer}
+button.ghost{background:transparent;border:1px solid #7c3aed;color:#7c3aed}
+input,textarea{width:100%;padding:8px;border-radius:8px;border:1px solid #333;background:#081021;color:#e6eef8;margin-top:6px}
+#board{display:grid;grid-template-columns:repeat(8,1fr);width:min(90vw,480px);aspect-ratio:1/1;border:4px solid #333;border-radius:8px;overflow:hidden;margin-top:12px}
+.cell{display:flex;align-items:center;justify-content:center;font-size:clamp(20px,6vw,40px);cursor:pointer;user-select:none}
+.light{background:#eeeed2;color:#111}
+.dark{background:#769656;color:#111}
+.cell.selected{outline:3px solid yellow}
+.controls{display:flex;gap:8px;margin-top:12px;flex-wrap:wrap;justify-content:center}
+.status{margin-top:8px;font-size:1rem;text-align:center}
+textarea{resize:vertical}
+</style>
 </head>
 <body>
-  <div class="wrap">
-    <header>
-      <div class="brand">
-        <div class="logo">♟</div>
-        <div>
-          <h1>Profi Online Šachy</h1>
-          <div class="subtitle">Lobby • P2P WebRTC • GitHub Pages ready • Mobil + PC</div>
-        </div>
-      </div>
-      <div class="muted">Vydání: <span class="kbd">P2P-demo</span></div>
-    </header>
+<h1>Online Šachy — 2 ZAŘÍZENÍ</h1>
 
-    <div class="main">
-      <!-- LEFT: Lobby / Game -->
-      <div>
-        <!-- LOBBY -->
-        <div id="lobbyPanel" class="panel">
-          <h2>Lobby</h2>
-          <p class="muted">Vyber režim hry. <strong>1 ZAŘÍZENÍ</strong> → hrajete na jednom zařízení (dva hráči lokálně). <strong>2 ZAŘÍZENÍ</strong> → zahrajete přes internet (peer-to-peer, ruční přenos signálu nebo kopírování kódu).</p>
+<div id="lobbyPanel" class="panel">
+  <button id="oneDeviceBtn">1 ZAŘÍZENÍ</button>
+  <button id="twoDeviceBtn">2 ZAŘÍZENÍ</button>
+</div>
 
-          <div class="lobby-grid" style="margin-top:12px">
-            <div class="lobby-btn" id="oneDeviceBtn" title="Dvoupodávání na jednom zařízení">
-              <strong>1 ZAŘÍZENÍ</strong>
-              <small>Hrajte na jednom telefonu/PC — tahy střídá druhý hráč.</small>
-            </div>
-
-            <div class="lobby-btn" id="twoDeviceBtn" title="Hra mezi dvěma zařízeními">
-              <strong>2 ZAŘÍZENÍ</strong>
-              <small>Hraj přes internet pomocí WebRTC. UI usnadní výměnu signálů/ kódů.</small>
-            </div>
-          </div>
-        </div>
-
-        <!-- GAME PANEL (hidden until start) -->
-        <div id="gamePanel" class="panel" style="display:none">
-          <div class="status-row" style="margin-bottom:10px">
-            <div class="info-pill" id="turnInfo">Tah: <strong>White</strong></div>
-            <div style="display:flex;gap:8px">
-              <button class="btn ghost" id="copyFenBtn" title="Kopírovat FEN">Kopírovat FEN</button>
-              <button class="btn ghost" id="exportPgnBtn" title="Export PGN">Export PGN</button>
-            </div>
-          </div>
-
-          <div class="game-area">
-            <div id="board" class="board panel" aria-label="Šachovnice"></div>
-
-            <div class="controls-row" style="width:100%;justify-content:space-between">
-              <div style="display:flex;gap:8px;flex:1">
-                <button class="btn" id="flipBtn">Otočit desku</button>
-                <button class="btn ghost" id="restartBtn">Restart</button>
-                <button class="btn ghost" id="resignBtn" style="background:linear-gradient(180deg,var(--danger),#ef4444);">Rezignovat</button>
-              </div>
-
-              <div style="min-width:150px;text-align:right" class="muted small" id="connStatus">Offline</div>
-            </div>
-          </div>
-        </div>
-
-        <!-- NETWORK PANEL (for 2-device) -->
-        <div id="networkPanel" class="panel" style="display:none;margin-top:12px">
-          <h2>Připojení (2 ZAŘÍZENÍ)</h2>
-          <p class="muted">Bez serveru — signály si vyměníte ručně. UI ti usnadní: vytvoř hosta, klikni <em>Kopírovat kód</em>, pošli soupeři. Druhý vloží a klikne <em>Připojit</em>. Hotovo.</p>
-
-          <div class="net-grid" style="margin-top:10px">
-            <div>
-              <div class="muted small">Host</div>
-              <div style="display:flex;gap:8px;margin-top:8px">
-                <button class="btn" id="createHostBtn">Vytvořit hru (Host)</button>
-                <button class="btn ghost" id="hostCancelBtn" style="display:none">Zrušit</button>
-              </div>
-              <div style="margin-top:10px">
-                <div class="small muted">Kód / Signál (po kliknutí zkopíruj a pošli soupeři)</div>
-                <textarea id="hostSignal" readonly placeholder="Signál hosta se zde objeví po vytvoření..." rows="6"></textarea>
-                <div style="display:flex;gap:8px;margin-top:8px">
-                  <button class="btn ghost" id="hostCopyBtn">Kopírovat kód</button>
-                </div>
-              </div>
-            </div>
-
-            <div>
-              <div class="muted small">Guest (připojit se)</div>
-              <div style="display:flex;gap:8px;margin-top:8px">
-                <button class="btn" id="startGuestBtn">Připojit (Guest)</button>
-                <button class="btn ghost" id="guestCancelBtn" style="display:none">Zrušit</button>
-              </div>
-              <div style="margin-top:10px">
-                <div class="small muted">Vlož kód signálu hosta sem (nebo ho rovnou přijmi z clipboardu)</div>
-                <textarea id="guestInput" placeholder="Vlož sem signál od hosta..." rows="6"></textarea>
-                <div style="display:flex;gap:8px;margin-top:8px">
-                  <button class="btn" id="guestApplyBtn">Připojit</button>
-                  <button class="btn ghost" id="guestPasteBtn">Vložit z clipboardu</button>
-                </div>
-
-                <div style="margin-top:10px">
-                  <div class="small muted">Po aplikaci signálu se hostu vytvoří odpověď. Host musí tu odpověď opět vložit do pole níže (Host -> vlož odpověď). Tento krok UI zjednodušuje — funguje bez serveru.</div>
-                </div>
-              </div>
-            </div>
-          </div>
-
-          <div style="margin-top:12px" class="muted-block">
-            <strong>Tip:</strong> nejrychlejší je přes zprávu, Discord nebo QR. Pokud chcete, pošlu verzi, která generuje QR z kódu.
-          </div>
-        </div>
-
-        <!-- HOST ANSWER panel -->
-        <div id="hostAnswerPanel" class="panel" style="display:none;margin-top:12px">
-          <h2>Host — vlož odpověď od Guest</h2>
-          <div class="small muted">Po tom, co Guest vloží hostův signál a klikne Připojit, vygeneruje Guest odpověď. Host ji sem vloží a klikne <strong>Vložit odpověď</strong> — spojení se dokončí.</div>
-          <textarea id="hostAnswer" placeholder="Sem vlož signál/odpověď od Guest..." rows="6"></textarea>
-          <div style="display:flex;gap:8px;margin-top:8px">
-            <button class="btn" id="applyHostAnswerBtn">Vložit odpověď</button>
-            <button class="btn ghost" id="hostAnswerPasteBtn">Vložit z clipboardu</button>
-          </div>
-        </div>
-
-      </div>
-
-      <!-- RIGHT: Preview, Chat & Info -->
-      <aside>
-        <div class="panel">
-          <h2>Náhled & Stav</h2>
-          <div class="muted">Stav připojení: <strong id="pingState">Nepřipojeno</strong></div>
-          <div style="margin-top:12px">
-            <div class="muted small">Info</div>
-            <ul style="margin:8px 0 0 18px;color:var(--muted)">
-              <li>Mobil + desktop: responzivní šachovnice</li>
-              <li>P2P přes WebRTC (simple-peer)</li>
-              <li>Signál vyměníte kopírováním nebo přes QR (ručně)</li>
-            </ul>
-          </div>
-        </div>
-
-        <div class="panel" style="margin-top:12px">
-          <h2>Chat (lokální + P2P)</h2>
-          <div class="chat-box" id="sideChat">
-            <div class="chat-msg chat-me">Systém: Lobby načtena.</div>
-          </div>
-
-          <div style="display:flex;gap:8px;margin-top:8px">
-            <input id="sideChatInput" placeholder="Zpráva..." />
-            <button class="btn ghost" id="sideChatSend">Pošli</button>
-          </div>
-        </div>
-
-        <div class="panel" style="margin-top:12px">
-          <h2>O</h2>
-          <div class="muted small">Tento soubor je single-page app. Nahraj jako <code>index.html</code> na GitHub Pages a běží. Nevyžaduje server.</div>
-        </div>
-      </aside>
-    </div>
-
-    <footer>
-      <div>Made for you • No server • P2P demo</div>
-      <div>Help: <a class="link" href="#" id="helpBtn">Jak na to</a></div>
-    </footer>
+<div id="codePanel" class="panel" style="display:none">
+  <div id="hostPanel" style="display:none">
+    <h3>Host</h3>
+    <button id="createHostBtn">Vytvořit hru</button>
+    <textarea id="hostSignal" rows="4" readonly placeholder="Signál hosta se zde objeví po vytvoření"></textarea>
   </div>
+  <div id="guestPanel" style="display:none">
+    <h3>Guest</h3>
+    <textarea id="guestInput" rows="4" placeholder="Vlož signál hosta"></textarea>
+    <button id="guestApplyBtn">Připojit</button>
+  </div>
+</div>
 
-  <!-- Full app JS -->
-  <script>
-    // ======= Core state =======
-    const chess = new Chess();
-    let orientation = 'white';
-    let selectedSquare = null;
-    let peer = null;
-    let isHost = false;
-    let connected = false;
+<div id="gamePanel" class="panel" style="display:none">
+  <div id="turnInfo" class="status">Tah: White</div>
+  <div id="board"></div>
+  <div class="controls">
+    <button id="flipBtn">Otočit desku</button>
+    <button id="restartBtn">Restart</button>
+  </div>
+</div>
 
-    // DOM refs
-    const lobbyPanel = document.getElementById('lobbyPanel');
-    const gamePanel = document.getElementById('gamePanel');
-    const networkPanel = document.getElementById('networkPanel');
-    const hostSignalArea = document.getElementById('hostSignal');
-    const guestInput = document.getElementById('guestInput');
-    const hostAnswerArea = document.getElementById('hostAnswer');
-    const turnInfo = document.getElementById('turnInfo');
-    const connStatus = document.getElementById('connStatus');
-    const pingState = document.getElementById('pingState');
-    const sideChatBox = document.getElementById('sideChat');
+<script>
+// ====== Core ======
+let chess = new Chess();
+let orientation='white', selected=null;
+let peer=null, connected=false;
 
-    // Buttons
-    const oneDeviceBtn = document.getElementById('oneDeviceBtn');
-    const twoDeviceBtn = document.getElementById('twoDeviceBtn');
-    const createHostBtn = document.getElementById('createHostBtn');
-    const hostCopyBtn = document.getElementById('hostCopyBtn');
-    const startGuestBtn = document.getElementById('startGuestBtn');
-    const guestApplyBtn = document.getElementById('guestApplyBtn');
-    const guestPasteBtn = document.getElementById('guestPasteBtn');
-    const applyHostAnswerBtn = document.getElementById('applyHostAnswerBtn');
-    const hostAnswerPasteBtn = document.getElementById('hostAnswerPasteBtn');
+// DOM refs
+const lobbyPanel=document.getElementById('lobbyPanel');
+const codePanel=document.getElementById('codePanel');
+const hostPanel=document.getElementById('hostPanel');
+const guestPanel=document.getElementById('guestPanel');
+const gamePanel=document.getElementById('gamePanel');
+const hostSignal=document.getElementById('hostSignal');
+const guestInput=document.getElementById('guestInput');
+const turnInfo=document.getElementById('turnInfo');
+const boardDiv=document.getElementById('board');
 
-    // Game buttons
-    const flipBtn = document.getElementById('flipBtn');
-    const restartBtn = document.getElementById('restartBtn');
-    const resignBtn = document.getElementById('resignBtn');
-    const copyFenBtn = document.getElementById('copyFenBtn');
-    const exportPgnBtn = document.getElementById('exportPgnBtn');
+// ====== Render ======
+function pieceToUnicode(p){const m={p:{w:'♙',b:'♟'},r:{w:'♖',b:'♜'},n:{w:'♘',b:'♞'},b:{w:'♗',b:'♝'},q:{w:'♕',b:'♛'},k:{w:'♔',b:'♚'}};return m[p.type][p.color];}
+function renderBoard(){
+  boardDiv.innerHTML='';
+  const b = chess.board();
+  const disp = orientation==='white'?b:b.slice().reverse().map(r=>r.slice().reverse());
+  disp.forEach((row,r)=>row.forEach((cell,c)=>{
+    const div=document.createElement('div');
+    div.className='cell '+((r+c)%2?'dark':'light');
+    if(cell) div.textContent=pieceToUnicode(cell);
+    div.onclick=()=>onCellClick(r,c);
+    boardDiv.appendChild(div);
+  }));
+  turnInfo.textContent='Tah: '+(chess.turn()==='w'?'White':'Black');
+  highlightSelected();
+}
+function coord(r,c){const f='abcdefgh',rk='87654321';return orientation==='white'?f[c]+rk[r]:f[7-c]+rk[7-r];}
+function algebraicToRenderIndex(sq){const f='abcdefgh',r='87654321';const c=f.indexOf(sq[0]),row=r.indexOf(sq[1]);return orientation==='white'?{r:row,c:c}:{r:7-row,c:7-c};}
+function highlightSelected(){if(!selected)return;const coords=algebraicToRenderIndex(selected);const idx=coords.r*8+coords.c;boardDiv.children[idx].classList.add('selected');}
 
-    // Chat
-    const sideChatInput = document.getElementById('sideChatInput');
-    const sideChatSend = document.getElementById('sideChatSend');
+// ====== Click ======
+function onCellClick(r,c){
+  const sq=coord(r,c);
+  const p=chess.get(sq);
+  if(selected){
+    const move=chess.move({from:selected,to:sq,promotion:'q'});
+    if(move) selected=null;
+    else if(p&&p.color===chess.turn()) selected=sq;
+    else selected=null;
+  }else if(p&&p.color===chess.turn()) selected=sq;
+  renderBoard();
+  // broadcast move if networked
+  if(peer&&connected) peer.send(JSON.stringify({type:'move',fen:chess.fen()}));
+}
 
-    // Elements for lobby actions
-    oneDeviceBtn.addEventListener('click', () => {
-      isHost = false;
-      showGamePanel();
-      startLocalMode();
-      pushSideMsg('Systém: Spuštěn režim 1 ZAŘÍZENÍ — dva hráči na jednom zařízení.');
-    });
-    twoDeviceBtn.addEventListener('click', () => {
-      showNetworkPanel();
-      pushSideMsg('Systém: Režim 2 ZAŘÍZENÍ — vyber Host nebo Guest a vyměňte signály.');
-    });
+// ====== Buttons ======
+document.getElementById('flipBtn').onclick=()=>{orientation=orientation==='white'?'black':'white';renderBoard();}
+document.getElementById('restartBtn').onclick=()=>{chess.reset();selected=null;renderBoard();}
 
-    // show/hide panels
-    function showGamePanel(){ lobbyPanel.style.display='none'; networkPanel.style.display='none'; gamePanel.style.display='block'; document.getElementById('hostAnswerPanel').style.display = 'none'; }
-    function showNetworkPanel(){ lobbyPanel.style.display='none'; networkPanel.style.display='block'; gamePanel.style.display='none'; document.getElementById('hostAnswerPanel').style.display = 'none'; }
+// ====== Lobby ======
+document.getElementById('oneDeviceBtn').onclick=()=>{
+  lobbyPanel.style.display='none';
+  gamePanel.style.display='block';
+  renderBoard();
+}
 
-    // ===== Board rendering =====
-    const boardDiv = document.getElementById('board');
+document.getElementById('twoDeviceBtn').onclick=()=>{
+  lobbyPanel.style.display='none';
+  codePanel.style.display='block';
+  hostPanel.style.display='block';
+  guestPanel.style.display='block';
+}
 
-    function pieceToUnicode(p){
-      const map = { p:{w:'♙',b:'♟'}, r:{w:'♖',b:'♜'}, n:{w:'♘',b:'♞'}, b:{w:'♗',b:'♝'}, q:{w:'♕',b:'♛'}, k:{w:'♔',b:'♚'} };
-      return map[p.type][p.color];
-    }
+// ====== Networking ======
+document.getElementById('createHostBtn').onclick=()=>{
+  peer=new SimplePeer({initiator:true,trickle:false});
+  hostSignal.value='';
+  peer.on('signal',data=>hostSignal.value=JSON.stringify(data));
+  peer.on('connect',()=>{connected=true;alert('Guest se připojil');});
+  peer.on('data',d=>{
+    const obj=JSON.parse(d.toString());
+    if(obj.type==='move'&&obj.fen){chess.load(obj.fen);selected=null;renderBoard();}
+  });
+}
 
-    function renderBoard(){
-      boardDiv.innerHTML = '';
-      const b = chess.board();
-      const display = (orientation==='white') ? b : b.slice().reverse().map(r => r.slice().reverse());
-      display.forEach((row, rIdx) => {
-        row.forEach((cell, cIdx) => {
-          const div = document.createElement('div');
-          div.className = 'cell ' + ((rIdx + cIdx) % 2 ? 'dark' : 'light');
-          if(cell) div.textContent = pieceToUnicode(cell);
-          div.addEventListener('click', () => onCellClick(rIdx, cIdx));
-          boardDiv.appendChild(div);
-        });
-      });
-      turnInfo.innerHTML = 'Tah: <strong>' + (chess.turn()==='w' ? 'White' : 'Black') + '</strong>';
-    }
+document.getElementById('guestApplyBtn').onclick=()=>{
+  const txt=guestInput.value.trim();
+  if(!txt){alert('Vlož signál hosta');return;}
+  peer=new SimplePeer({initiator:false,trickle:false});
+  peer.on('signal',data=>{alert('Pošli tento kód hostovi: '+JSON.stringify(data));});
+  peer.on('connect',()=>{connected=true;alert('Připojeno k hostu');gamePanel.style.display='block';codePanel.style.display='none';renderBoard();});
+  peer.on('data',d=>{
+    const obj=JSON.parse(d.toString());
+    if(obj.type==='move'&&obj.fen){chess.load(obj.fen);selected=null;renderBoard();}
+  });
+  peer.signal(JSON.parse(txt));
+}
 
-    function coordToAlgebraic(r,c){
-      const files = 'abcdefgh', ranks='87654321';
-      return orientation==='white' ? files[c]+ranks[r] : files[7-c]+ranks[7-r];
-    }
-
-    function onCellClick(r,c){
-      const sq = coordToAlgebraic(r,c);
-      const piece = chess.get(sq);
-      if(selectedSquare){
-        const move = chess.move({ from: selectedSquare, to: sq, promotion:'q' });
-        if(move){
-          selectedSquare = null;
-          renderBoard();
-          appendLog((move.color==='w'?'White':'Black') + ': ' + move.san);
-          // broadcast move if networked
-          if(peer && connected) peer.send(JSON.stringify({ type:'move', fen: chess.fen(), san: move.san }));
-        } else {
-          // select another if valid
-          if(piece && piece.color === chess.turn()) selectedSquare = sq;
-          else selectedSquare = null;
-        }
-      } else {
-        if(piece && piece.color === chess.turn()) selectedSquare = sq;
-      }
-      // quick visual: highlight selected cell via outline
-      highlightSelected();
-    }
-
-    function highlightSelected(){
-      // naive: re-render and add class for selected
-      // to keep simple, call renderBoard then find cell of selectedSquare and add selected class
-      renderBoard();
-      if(!selectedSquare) return;
-      const coordinates = algebraicToRenderIndex(selectedSquare);
-      if(!coordinates) return;
-      const cellIndex = coordinates.r*8 + coordinates.c;
-      const children = boardDiv.children;
-      if(children[cellIndex]) children[cellIndex].classList.add('selected');
-    }
-
-    function algebraicToRenderIndex(sq){
-      const files = 'abcdefgh', ranks='87654321';
-      const c = files.indexOf(sq[0]), r = ranks.indexOf(sq[1]);
-      if(orientation==='white') return { r, c };
-      return { r: 7 - r, c: 7 - c };
-    }
-
-    // ===== Local 1-device mode =====
-    function startLocalMode(){
-      // reset stats
-      chess.reset();
-      orientation = 'white';
-      selectedSquare = null;
-      renderBoard();
-      gamePanel.style.display = 'block';
-      connStatus.innerText = 'Lokální (1 zařízení)';
-      pingState.innerText = 'Lokální';
-    }
-
-    // ===== Networking (P2P WebRTC via simple-peer) =====
-    function createSimplePeer(initiator){
-      if(peer){ try{ peer.destroy(); }catch(e){} peer = null; connected = false; }
-      peer = new SimplePeer({ initiator, trickle:false });
-      isHost = initiator;
-
-      peer.on('signal', data => {
-        // show host signal or guest answer depending on role
-        const s = JSON.stringify(data);
-        if(isHost){
-          hostSignalArea.value = s;
-          pingState.innerText = 'Host signál připraven';
-        } else {
-          // guest: generate answer into hostAnswer area? We'll show guest answer in hostAnswerPanel for host to paste.
-          hostAnswerArea.value = s;
-          pingState.innerText = 'Guest odpověď připravena';
-        }
-      });
-
-      peer.on('connect', () => {
-        connected = true;
-        connStatus.innerText = 'Připojeno';
-        pingState.innerText = 'Online';
-        pushSideMsg('Systém: Peer připojen.');
-        // sync board state: host should send current fen
-        if(isHost){
-          peer.send(JSON.stringify({ type:'move', fen: chess.fen() }));
-        }
-      });
-
-      peer.on('data', d => {
-        // try parse
-        let obj = null;
-        try { obj = JSON.parse(d.toString()); } catch(e){ obj = null; }
-        if(obj){
-          handleIncoming(obj);
-  
+// ====== Initial ======
+renderBoard();
+</script>
+</body>
+</html>
